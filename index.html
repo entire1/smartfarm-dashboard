@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스마트팜 대시보드</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Apple SD Gothic Neo',sans-serif; background:#0b0f1a; color:#e2e8f0; display:flex; min-height:100vh; font-size:13px; }
+.sidebar { width:220px; background:#111827; border-right:1px solid #1e2d3d; padding:24px 0; flex-shrink:0; display:flex; flex-direction:column; }
+.logo { padding:0 20px 20px; border-bottom:1px solid #1e2d3d; margin-bottom:12px; }
+.logo-icon { width:36px;height:36px;background:#16a34a;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:8px; }
+.logo-text { font-size:15px;font-weight:600;color:#f1f5f9; }
+.logo-sub { font-size:11px;color:#64748b;margin-top:2px; }
+.nav-item { display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;color:#94a3b8;cursor:pointer;border-left:3px solid transparent; }
+.nav-item.active { color:#4ade80;border-left-color:#4ade80;background:rgba(74,222,128,0.06); }
+.sidebar-footer { margin-top:auto;padding:16px 20px;border-top:1px solid #1e2d3d;font-size:11px;color:#475569; }
+.main { flex:1;display:flex;flex-direction:column;overflow:hidden; }
+.topbar { background:#111827;border-bottom:1px solid #1e2d3d;padding:14px 24px;display:flex;align-items:center;justify-content:space-between; }
+.topbar-title { font-size:16px;font-weight:600;color:#f1f5f9; }
+.topbar-sub { font-size:11px;color:#64748b;margin-top:2px; }
+.topbar-right { display:flex;align-items:center;gap:12px; }
+.status-dot { width:8px;height:8px;border-radius:50%;background:#475569; }
+.status-dot.on { background:#4ade80;animation:pulse 2s infinite; }
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.status-text { font-size:12px;color:#475569; }
+.status-text.on { color:#4ade80; }
+.content { flex:1;padding:20px 24px;overflow-y:auto; }
+.kpi-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px; }
+.kpi-card { background:#111827;border:1px solid #1e2d3d;border-radius:12px;padding:16px;position:relative;overflow:hidden; }
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.kpi-card.temp::before{background:linear-gradient(90deg,#f97316,#ef4444);}
+.kpi-card.humid::before{background:linear-gradient(90deg,#38bdf8,#6366f1);}
+.kpi-label{font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;}
+.kpi-value{font-size:28px;font-weight:700;color:#f1f5f9;line-height:1;}
+.kpi-unit{font-size:13px;color:#94a3b8;margin-left:3px;}
+.kpi-sub{font-size:11px;color:#475569;margin-top:5px;}
+.kpi-icon{font-size:28px;position:absolute;right:14px;top:14px;opacity:0.15;}
+.charts-row{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px;}
+.card{background:#111827;border:1px solid #1e2d3d;border-radius:12px;padding:18px;}
+.card-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;}
+.card-title{font-size:13px;font-weight:600;color:#e2e8f0;}
+.card-sub{font-size:11px;color:#475569;margin-top:2px;}
+.legend{display:flex;gap:12px;flex-wrap:wrap;}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#94a3b8;}
+.legend-dot{width:8px;height:8px;border-radius:2px;}
+.devices-section{margin-bottom:20px;}
+.section-title{font-size:12px;color:#64748b;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;}
+.device-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.device-card{background:#111827;border:1px solid #1e2d3d;border-radius:10px;padding:14px;transition:border-color 0.2s;}
+.device-card.online{border-left:3px solid #4ade80;}
+.device-card.warning{border-left:3px solid #fbbf24;}
+.device-card.offline{border-left:3px solid #f87171;opacity:0.7;}
+.device-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.device-id{font-size:12px;font-weight:600;color:#f1f5f9;}
+.device-crop{font-size:11px;color:#64748b;margin-top:1px;}
+.device-status{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;}
+.device-status.online{background:rgba(74,222,128,0.1);color:#4ade80;}
+.device-status.warning{background:rgba(251,191,36,0.1);color:#fbbf24;}
+.device-status.offline{background:rgba(248,113,113,0.1);color:#f87171;}
+.device-sensors{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.sensor-row{background:#0f172a;border-radius:6px;padding:7px 10px;}
+.sensor-label{font-size:10px;color:#475569;}
+.sensor-val{font-size:14px;font-weight:600;color:#e2e8f0;margin-top:1px;}
+.device-time{font-size:10px;color:#475569;margin-top:8px;text-align:right;}
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #0f172a;}
+.alert-item:last-child{border-bottom:none;}
+.alert-dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0;}
+.alert-dot.ok{background:#4ade80;} .alert-dot.warn{background:#fbbf24;} .alert-dot.danger{background:#f87171;}
+.alert-title{font-size:12px;color:#e2e8f0;font-weight:500;}
+.alert-time{font-size:10px;color:#475569;margin-top:2px;}
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;}
+.badge.danger{background:rgba(248,113,113,0.1);color:#f87171;}
+.bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+/* 설정 패널 */
+.config-panel{background:#111827;border:1px solid #fbbf24;border-radius:12px;padding:18px;margin-bottom:20px;}
+.config-title{font-size:13px;font-weight:600;color:#fbbf24;margin-bottom:12px;}
+.config-row{display:flex;gap:10px;align-items:center;margin-bottom:8px;}
+.config-label{font-size:11px;color:#94a3b8;width:120px;flex-shrink:0;}
+.config-input{flex:1;background:#0f172a;border:1px solid #1e2d3d;border-radius:6px;padding:7px 10px;color:#e2e8f0;font-size:12px;outline:none;}
+.config-input:focus{border-color:#4ade80;}
+.config-btn{background:#4ade80;color:#0b0f1a;font-size:12px;font-weight:600;padding:8px 18px;border-radius:8px;cursor:pointer;border:none;margin-right:8px;}
+.config-btn.gray{background:#334155;color:#94a3b8;}
+.config-hint{font-size:11px;color:#475569;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🌱</div>
+    <div class="logo-text">SmartFarm</div>
+    <div class="logo-sub">다중 센서 관리 시스템</div>
+  </div>
+  <div class="nav-item active"><span>📊</span> 개요</div>
+  <div class="nav-item"><span>🌡️</span> 센서 모니터링</div>
+  <div class="nav-item"><span>🌿</span> 작물 관리</div>
+  <div class="nav-item"><span>🔔</span> 알림 <span id="nav-badge" style="margin-left:auto;background:#ef4444;color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;">0</span></div>
+  <div class="sidebar-footer" id="sync-time">마지막 동기화: -</div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title">농장 현황 개요</div>
+      <div class="topbar-sub" id="device-count">기기 연결 대기 중...</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-dot" id="conn-dot"></div>
+      <div class="status-text" id="conn-text">미연결</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- 설정 패널 -->
+    <div class="config-panel" id="config-panel">
+      <div class="config-title">🔥 Firebase 연결 설정 <span id="saved-badge" style="display:none;" class="saved-badge">✓ 저장된 설정</span></div>
+      <div class="config-row">
+        <div class="config-label">Database URL</div>
+        <input class="config-input" id="fb-url" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" />
+      </div>
+      <div class="config-row">
+        <div class="config-label">API Key</div>
+        <input class="config-input" id="fb-key" placeholder="AIza..." />
+      </div>
+      <div class="config-row">
+        <div class="config-label">기기 ID 목록</div>
+        <input class="config-input" id="fb-devices" placeholder="esp32-A1, esp32-A2" />
+      </div>
+      <button class="config-btn" onclick="connectFirebase()">연결하기</button>
+      <button class="config-btn" style="background:#1e3a5f;color:#38bdf8;" onclick="saveConfig()">💾 설정 저장</button>
+      <button class="config-btn gray" onclick="loadDemo()">데모로 보기</button>
+      <button class="config-btn red" onclick="clearConfig()">설정 초기화</button>
+      <div class="config-hint">* Database URL은 https:// 포함해서 입력하세요.<br>* "설정 저장"을 누르면 다음에 열 때 자동으로 불러와요.</div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card temp">
+        <div class="kpi-label">평균 온도</div>
+        <div class="kpi-value" id="kpi-temp">--<span class="kpi-unit">°C</span></div>
+        <div class="kpi-sub" id="kpi-temp-range">-</div>
+        <div class="kpi-icon">🌡️</div>
+      </div>
+      <div class="kpi-card humid">
+        <div class="kpi-label">평균 습도</div>
+        <div class="kpi-value" id="kpi-humid">--<span class="kpi-unit">%</span></div>
+        <div class="kpi-sub" id="kpi-humid-range">-</div>
+        <div class="kpi-icon">💧</div>
+      </div>
+      <div class="kpi-card" style="border-top:2px solid #4ade80;">
+        <div class="kpi-label">온라인 기기</div>
+        <div class="kpi-value" id="kpi-online">--<span class="kpi-unit">대</span></div>
+        <div class="kpi-sub" id="kpi-total">전체 0대</div>
+        <div class="kpi-icon">📡</div>
+      </div>
+      <div class="kpi-card" style="border-top:2px solid #f87171;">
+        <div class="kpi-label">경고 알림</div>
+        <div class="kpi-value" id="kpi-alerts">--<span class="kpi-unit">건</span></div>
+        <div class="kpi-sub" id="kpi-alert-sub">-</div>
+        <div class="kpi-icon">🔔</div>
+      </div>
+    </div>
+
+    <!-- 기기 카드 -->
+    <div class="devices-section">
+      <div class="section-title">기기별 실시간 현황</div>
+      <div class="device-grid" id="device-grid">
+        <div style="color:#475569;font-size:12px;grid-column:span 3;padding:20px 0;">Firebase를 연결하거나 데모를 선택하세요.</div>
+      </div>
+    </div>
+
+    <!-- 차트 -->
+    <div class="charts-row">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">기기별 온도 / 습도 비교</div><div class="card-sub">현재 측정값</div></div>
+          <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>온도</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div>습도</div>
+          </div>
+        </div>
+        <div style="position:relative;height:200px;"><canvas id="barChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">기기 상태 분포</div><div class="card-sub" id="device-total2">총 0대</div></div></div>
+        <div style="position:relative;height:150px;"><canvas id="donutChart"></canvas></div>
+        <div class="legend" style="margin-top:10px;justify-content:center;" id="donut-legend"></div>
+      </div>
+    </div>
+
+    <!-- 알림 + 기기 정보 -->
+    <div class="bottom-row">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">알림 패널</div>
+          <span class="badge danger" id="alert-badge">0건</span>
+        </div>
+        <div id="alert-list"><div style="color:#475569;font-size:12px;padding:10px 0;">알림 없음</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">연결된 기기 정보</div></div>
+        <div id="device-info-list"><div style="color:#475569;font-size:12px;padding:10px 0;">기기 없음</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let devices = {};
+let barChart, donutChart;
+const OFFLINE_MS = 30000;
+const COLORS = ['#4ade80','#38bdf8','#f97316','#a78bfa','#fbbf24','#f87171'];
+const STORAGE_KEY = 'smartfarm_config';
+
+// 저장된 설정 불러오기
+function loadSavedConfig() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const cfg = JSON.parse(saved);
+    document.getElementById('fb-url').value     = cfg.url     || '';
+    document.getElementById('fb-key').value     = cfg.key     || '';
+    document.getElementById('fb-devices').value = cfg.devices || '';
+    document.getElementById('saved-badge').style.display = 'inline-flex';
+  } catch(e) {}
+}
+
+// 설정 저장
+function saveConfig() {
+  const cfg = {
+    url:     document.getElementById('fb-url').value.trim(),
+    key:     document.getElementById('fb-key').value.trim(),
+    devices: document.getElementById('fb-devices').value.trim()
+  };
+  if (!cfg.url || !cfg.key || !cfg.devices) {
+    alert('저장할 값을 먼저 입력해주세요.'); return;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  document.getElementById('saved-badge').style.display = 'inline-flex';
+  alert('설정이 저장됐어요! 다음에 열면 자동으로 불러와요 😊');
+}
+
+// 설정 초기화
+function clearConfig() {
+  if (!confirm('저장된 설정을 삭제할까요?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  document.getElementById('fb-url').value     = '';
+  document.getElementById('fb-key').value     = '';
+  document.getElementById('fb-devices').value = '';
+  document.getElementById('saved-badge').style.display = 'none';
+  alert('설정이 초기화됐어요.');
+}
+
+// 페이지 로드 시 자동으로 저장된 설정 불러오기
+window.addEventListener('load', loadSavedConfig);
+
+function connectFirebase() {
+  const url     = document.getElementById('fb-url').value.trim();
+  const key     = document.getElementById('fb-key').value.trim();
+  const ids     = document.getElementById('fb-devices').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if (!url || !key || ids.length === 0) { alert('모든 항목을 입력해주세요.'); return; }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp({ apiKey: key, databaseURL: url });
+    const db = firebase.database();
+    ids.forEach(id => {
+      db.ref('/sensors/' + id).on('value', snap => {
+        const d = snap.val();
+        if (d) { devices[id] = { ...d, _id: id, _ts: Date.now() }; renderAll(); }
+      });
+    });
+    setConnected(true);
+    document.getElementById('config-panel').style.display = 'none';
+  } catch(e) { alert('Firebase 연결 실패: ' + e.message); }
+}
+
+function loadDemo() {
+  document.getElementById('config-panel').style.display = 'none';
+  setConnected(true);
+  const demo = [
+    { _id:'esp32-A1', zone:'A-1', crop:'방울토마토', temperature:23.4, humidity:72 },
+    { _id:'esp32-A2', zone:'A-2', crop:'상추',       temperature:19.8, humidity:65 },
+    { _id:'esp32-B1', zone:'B-1', crop:'파프리카',   temperature:29.7, humidity:45 },
+  ];
+  demo.forEach(d => { devices[d._id] = { ...d, _ts: Date.now() }; });
+  renderAll();
+  setInterval(() => {
+    Object.values(devices).forEach(d => {
+      d.temperature = +(d.temperature + (Math.random()-0.5)*0.4).toFixed(1);
+      d.humidity    = +(d.humidity    + (Math.random()-0.5)*1).toFixed(1);
+      d._ts = Date.now();
+    });
+    renderAll();
+  }, 3000);
+}
+
+function setConnected(ok) {
+  document.getElementById('conn-dot').className  = 'status-dot' + (ok?' on':'');
+  document.getElementById('conn-text').className = 'status-text' + (ok?' on':'');
+  document.getElementById('conn-text').textContent = ok ? '실시간 연결됨' : '미연결';
+}
+
+function deviceStatus(d) {
+  if (Date.now() - (d._ts||0) > OFFLINE_MS) return 'offline';
+  if (+d.temperature > 28 || +d.humidity < 50) return 'warning';
+  return 'online';
+}
+
+function avg(arr,k){ return arr.reduce((s,d)=>s+(+d[k]||0),0)/arr.length; }
+function mn(arr,k){ return Math.min(...arr.map(d=>+d[k]||0)); }
+function mx(arr,k){ return Math.max(...arr.map(d=>+d[k]||0)); }
+
+function renderAll() {
+  const list = Object.values(devices);
+  if (!list.length) return;
+  document.getElementById('sync-time').textContent = '마지막 동기화: 방금 전';
+  // KPI
+  document.getElementById('kpi-temp').innerHTML  = avg(list,'temperature').toFixed(1)+'<span class="kpi-unit">°C</span>';
+  document.getElementById('kpi-humid').innerHTML = avg(list,'humidity').toFixed(1)+'<span class="kpi-unit">%</span>';
+  document.getElementById('kpi-temp-range').textContent  = `범위: ${mn(list,'temperature').toFixed(1)} ~ ${mx(list,'temperature').toFixed(1)}°C`;
+  document.getElementById('kpi-humid-range').textContent = `범위: ${mn(list,'humidity').toFixed(1)} ~ ${mx(list,'humidity').toFixed(1)}%`;
+  const onlineCnt = list.filter(d=>deviceStatus(d)==='online').length;
+  document.getElementById('kpi-online').innerHTML = onlineCnt+'<span class="kpi-unit">대</span>';
+  document.getElementById('kpi-total').textContent = `전체 ${list.length}대`;
+  // 알림
+  const alerts = [];
+  list.forEach(d=>{
+    if(+d.temperature>28) alerts.push({level:'danger',msg:`${d._id} 온도 초과 (${(+d.temperature).toFixed(1)}°C)`});
+    if(+d.humidity<50)    alerts.push({level:'warn',  msg:`${d._id} 습도 낮음 (${(+d.humidity).toFixed(1)}%)`});
+    if(deviceStatus(d)==='offline') alerts.push({level:'danger',msg:`${d._id} 오프라인`});
+  });
+  document.getElementById('kpi-alerts').innerHTML = alerts.length+'<span class="kpi-unit">건</span>';
+  document.getElementById('nav-badge').textContent = alerts.length;
+  document.getElementById('alert-badge').textContent = alerts.length+'건';
+  document.getElementById('alert-list').innerHTML = alerts.length
+    ? alerts.map(a=>`<div class="alert-item"><div class="alert-dot ${a.level}"></div><div><div class="alert-title">${a.msg}</div><div class="alert-time">방금 전</div></div></div>`).join('')
+    : '<div style="color:#475569;font-size:12px;padding:10px 0;">이상 없음 ✓</div>';
+  // 기기 카드
+  document.getElementById('device-count').textContent = `총 ${list.length}대 연결됨`;
+  document.getElementById('device-grid').innerHTML = list.map(d=>{
+    const st = deviceStatus(d);
+    const stLabel = {online:'온라인',warning:'주의',offline:'오프라인'}[st];
+    const age = Math.round((Date.now()-(d._ts||0))/1000);
+    const t = age<60?`${age}초 전`:`${Math.round(age/60)}분 전`;
+    return `<div class="device-card ${st}">
+      <div class="device-header">
+        <div><div class="device-id">${d._id}</div><div class="device-crop">${d.zone||''} · ${d.crop||''}</div></div>
+        <span class="device-status ${st}">${stLabel}</span>
+      </div>
+      <div class="device-sensors">
+        <div class="sensor-row"><div class="sensor-label">온도</div><div class="sensor-val">${(+d.temperature).toFixed(1)}°C</div></div>
+        <div class="sensor-row"><div class="sensor-label">습도</div><div class="sensor-val">${(+d.humidity).toFixed(1)}%</div></div>
+      </div>
+      <div class="device-time">마지막 수신 ${t}</div>
+    </div>`;
+  }).join('');
+  // 기기 정보
+  document.getElementById('device-info-list').innerHTML = list.map((d,i)=>`
+    <div class="alert-item">
+      <div class="alert-dot" style="background:${COLORS[i%COLORS.length]}"></div>
+      <div><div class="alert-title">${d._id} — ${d.zone||'?'} · ${d.crop||'?'}</div>
+      <div class="alert-time">상태: ${deviceStatus(d)}</div></div>
+    </div>`).join('');
+  // 차트
+  renderCharts(list);
+}
+
+function renderCharts(list) {
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: list.map(d=>d._id),
+      datasets:[
+        {label:'온도(°C)', data:list.map(d=>+d.temperature), backgroundColor:list.map((_,i)=>COLORS[i%COLORS.length]+'cc'), borderRadius:4},
+        {label:'습도(%)',  data:list.map(d=>+d.humidity),    backgroundColor:list.map((_,i)=>COLORS[i%COLORS.length]+'44'), borderRadius:4}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e293b',titleColor:'#e2e8f0',bodyColor:'#94a3b8',borderColor:'#334155',borderWidth:1}},
+      scales:{x:{ticks:{color:'#475569'},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#475569'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+  const counts = {online:0,warning:0,offline:0};
+  list.forEach(d=>counts[deviceStatus(d)]++);
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById('donutChart').getContext('2d'), {
+    type:'doughnut',
+    data:{labels:['정상','주의','오프라인'],datasets:[{data:[counts.online,counts.warning,counts.offline],backgroundColor:['#4ade80','#fbbf24','#f87171'],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false}}}
+  });
+  document.getElementById('donut-legend').innerHTML =
+    [['정상','#4ade80',counts.online],['주의','#fbbf24',counts.warning],['오프라인','#f87171',counts.offline]]
+    .map(([l,c,n])=>`<div class="legend-item"><div class="legend-dot" style="background:${c}"></div>${l} ${n}대</div>`).join('');
+  document.getElementById('device-total2').textContent = `총 ${list.length}대`;
+}
+</script>
+</body>
+</html>
